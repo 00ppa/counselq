@@ -18,7 +18,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { citationDb, extractedJudgments } from "@/lib/mock-data";
+import { citationDb } from "@/lib/mock-data";
+import { CONSTITUTION_INDEX, STATUTORY_INDEX, CONCEPT_INDEX, IndexEntry } from "@/lib/mock-indexes";
 import { caseDeskStore, useActiveCase } from "@/lib/case-desk-store";
 
 export const Route = createFileRoute("/research")({
@@ -31,17 +32,36 @@ export const Route = createFileRoute("/research")({
   component: ResearchPage,
 });
 
-type Result = { name?: string; citation?: string; court?: string; year?: string; source?: string; url?: string; verified: boolean; note: string; query: string } | null;
+type CitationResult = { name?: string; citation?: string; court?: string; year?: string; source?: string; verified: boolean; note: string; query: string } | null;
+
+type GroupedResults = {
+  constitution: IndexEntry[];
+  statutory: IndexEntry[];
+  caseLaw: IndexEntry[];
+  concepts: IndexEntry[];
+};
+
+// Expanded mock extractions
+const mockExtractions = [
+  { id: "e1", type: "Case Name", text: "Kesavananda Bharati v. State of Kerala", verified: true },
+  { id: "e2", type: "Citation", text: "(1973) 4 SCC 225", verified: true },
+  { id: "e3", type: "Act", text: "Constitution of India", verified: true },
+  { id: "e4", type: "Section", text: "Article 368", verified: true },
+  { id: "e5", type: "Legal Issue", text: "Basic Structure Doctrine", verified: false },
+];
 
 function ResearchPage() {
-  // Shared state
   const activeCase = useActiveCase();
   
   // Tab 1: Search state
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<Result>(null);
   const [searchFilter, setSearchFilter] = useState("all");
+  
+  // Results
+  const [citationResult, setCitationResult] = useState<CitationResult>(null);
+  const [groupedResults, setGroupedResults] = useState<GroupedResults | null>(null);
+  const [noResult, setNoResult] = useState(false);
 
   // Tab 2: Uploads state
   const [scanned, setScanned] = useState(false);
@@ -56,48 +76,108 @@ function ResearchPage() {
   const [notes, setNotes] = useState<{ id: string; title: string; content: string; tag: string; source: string }[]>([]);
   const [newNote, setNewNote] = useState({ title: "", content: "", tag: "", source: "" });
 
-  // Tab 5: Saved items (Mock unified view)
+  // Tab 5: Saved items
   const [savedItems, setSavedItems] = useState<{ type: string; title: string; subtitle: string; date: string }[]>([]);
 
   // Argument Builder state
   const [argIssue, setArgIssue] = useState("");
   const [argFacts, setArgFacts] = useState("");
+  const [argAuth, setArgAuth] = useState("");
   const [argGen, setArgGen] = useState<any>(null);
   const [argGenerating, setArgGenerating] = useState(false);
+  const [argError, setArgError] = useState("");
 
-  // --- Handlers ---
+  // --- Search Logic ---
 
-  const verifySearch = () => {
-    if (!query.trim()) return;
+  const classifyAndSearch = () => {
+    const q = query.trim().toLowerCase();
+    if (!q) return;
+
     setLoading(true);
-    setResult(null);
+    setCitationResult(null);
+    setGroupedResults(null);
+    setNoResult(false);
+
     window.setTimeout(() => {
-      const hit = citationDb[query.trim().toLowerCase()];
-      const res = hit ? { ...hit, query } : {
-        verified: false,
-        note: "Not traced in reported-judgments index. Treat as unverified before citing.",
-        query,
-      };
-      setResult(res);
+      // 1. Is it a Citation? (Check citationDb first or basic regex)
+      const isCitationRegex = /^(\(|\[)?\d{4}(\)|\])?\s+\d*\s*[a-zA-Z]+\s+\d+/i.test(q);
+      const isKnownCitation = citationDb[q];
+
+      if (isCitationRegex || isKnownCitation) {
+        const hit = citationDb[q];
+        setCitationResult(hit ? { ...hit, query: q } : {
+          verified: false,
+          note: "No reported judgment traced at this citation. Likely AI-hallucinated or incorrect.",
+          query: q,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // 2. Not a citation, classify into groups
+      const results: GroupedResults = { constitution: [], statutory: [], caseLaw: [], concepts: [] };
+      let found = false;
+
+      // Check Constitution
+      const artMatch = q.match(/article\s+(\d+[a-z]?)/i) || q.match(/art\.\s*(\d+[a-z]?)/i);
+      if (artMatch) {
+        const artNum = artMatch[1].toLowerCase();
+        if (CONSTITUTION_INDEX[artNum]) {
+          results.constitution.push(CONSTITUTION_INDEX[artNum]!);
+          found = true;
+        }
+      } else if (q.includes("constitution")) {
+        // Just return article 21 as a demo if they search "constitution privacy" etc and it matches a concept
+        Object.values(CONSTITUTION_INDEX).forEach(item => {
+          if (item.title.toLowerCase().includes(q.replace("constitution", "").trim())) {
+            results.constitution.push(item);
+            found = true;
+          }
+        });
+      }
+
+      // Check Statutory
+      Object.keys(STATUTORY_INDEX).forEach(key => {
+        if (q.includes(key.toLowerCase()) || STATUTORY_INDEX[key]!.title.toLowerCase().includes(q)) {
+          results.statutory.push(STATUTORY_INDEX[key]!);
+          found = true;
+        }
+      });
+
+      // Check Concepts / Case Names
+      Object.keys(CONCEPT_INDEX).forEach(key => {
+        if (q.includes(key.toLowerCase())) {
+          const item = CONCEPT_INDEX[key]!;
+          if (item.type === "Case Name") results.caseLaw.push(item);
+          else results.concepts.push(item);
+          found = true;
+        }
+      });
+
+      if (!found) {
+        setNoResult(true);
+      } else {
+        setGroupedResults(results);
+      }
       setLoading(false);
-    }, 1400);
+    }, 1000);
   };
 
-  const saveSearchToDesk = (res: any) => {
+  const saveToDesk = (item: any, type: string) => {
     if (!activeCase) {
       toast.error("No active case desk");
       return;
     }
     caseDeskStore.addAuthority(activeCase.id, {
-      name: res.name || res.query,
-      citation: res.citation || res.query,
-      court: res.court || "Unknown Court",
-      year: res.year || "Unknown Year",
-      source: res.source || "SCC OnLine",
-      status: "Verified",
+      name: item.name || item.title || item.query,
+      citation: item.citation || item.source || item.query,
+      court: item.court || "Unknown",
+      year: item.year || "Unknown",
+      source: item.source || "CounselQ Research",
+      status: item.verified === false ? "Review Required" : "Verified",
     });
-    setSavedItems(prev => [...prev, { type: "Authority", title: res.name || res.query, subtitle: res.citation || "", date: new Date().toLocaleDateString() }]);
-    toast.success(`Saved authority to Case Desk: ${activeCase.caseName}`);
+    setSavedItems(prev => [...prev, { type, title: item.name || item.title || item.query, subtitle: item.citation || item.source || "", date: new Date().toLocaleDateString() }]);
+    toast.success(`Saved to Case Desk: ${activeCase.caseName}`);
   };
 
   const handleScan = () => {
@@ -105,17 +185,16 @@ function ResearchPage() {
     window.setTimeout(() => {
       setScanning(false);
       setScanned(true);
-      // Pre-select verified items
       const preselected = new Set<string>();
-      extractedJudgments.forEach(j => { if (j.verified) preselected.add(j.cite); });
+      mockExtractions.forEach(j => { if (j.verified) preselected.add(j.id); });
       setSelectedUploads(preselected);
     }, 1600);
   };
 
-  const toggleUploadSelection = (cite: string) => {
+  const toggleUploadSelection = (id: string) => {
     const next = new Set(selectedUploads);
-    if (next.has(cite)) next.delete(cite);
-    else next.add(cite);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     setSelectedUploads(next);
   };
 
@@ -125,21 +204,21 @@ function ResearchPage() {
       return;
     }
     let count = 0;
-    extractedJudgments.forEach(j => {
-      if (selectedUploads.has(j.cite)) {
+    mockExtractions.forEach(j => {
+      if (selectedUploads.has(j.id)) {
         caseDeskStore.addAuthority(activeCase.id, {
-          name: j.name,
-          citation: j.cite,
-          court: j.court,
+          name: j.text,
+          citation: j.type,
+          court: "Extracted",
           year: "Unknown Year",
-          source: "Extracted",
+          source: "Extracted Document",
           status: j.verified ? "Verified" : "Review Required",
         });
-        setSavedItems(prev => [...prev, { type: "Authority", title: j.name, subtitle: j.cite, date: new Date().toLocaleDateString() }]);
+        setSavedItems(prev => [...prev, { type: j.type, title: j.text, subtitle: "Extracted from document", date: new Date().toLocaleDateString() }]);
         count++;
       }
     });
-    toast.success(`Saved ${count} authorities to Case Desk`);
+    toast.success(`Saved ${count} items to Case Desk`);
   };
 
   const handleSaveHighlight = () => {
@@ -168,17 +247,69 @@ function ResearchPage() {
   };
 
   const handleGenerateArgument = () => {
-    if (!argIssue || !argFacts) return;
+    setArgError("");
+    setArgGen(null);
+
+    if (!argIssue.trim() || !argFacts.trim() || !argAuth.trim()) {
+      setArgError("Add a clear legal issue, relevant facts, and at least one verified/configured authority or legal provision.");
+      return;
+    }
+
+    if (argIssue.trim().split(/\s+/).length < 3 || argFacts.trim().split(/\s+/).length < 3) {
+      setArgError("Please enter a clear legal issue and relevant facts before generating an argument.");
+      return;
+    }
+
+    const authQuery = argAuth.trim().toLowerCase();
+    let matchedAuthority: string | null = null;
+
+    if (citationDb[authQuery]?.verified) {
+      matchedAuthority = argAuth;
+    } else {
+      const artMatch = authQuery.match(/article\s+(\d+[a-z]?)/i) || authQuery.match(/art\.\s*(\d+[a-z]?)/i);
+      if (artMatch && CONSTITUTION_INDEX[artMatch[1].toLowerCase()]) {
+        matchedAuthority = CONSTITUTION_INDEX[artMatch[1].toLowerCase()]!.title;
+      }
+    }
+
+    if (!matchedAuthority) {
+      Object.keys(STATUTORY_INDEX).forEach(key => {
+        if (authQuery.includes(key) || STATUTORY_INDEX[key]!.title.toLowerCase().includes(authQuery)) {
+          matchedAuthority = STATUTORY_INDEX[key]!.title;
+        }
+      });
+    }
+
+    if (!matchedAuthority) {
+      Object.keys(CONCEPT_INDEX).forEach(key => {
+        if (authQuery.includes(key) || CONCEPT_INDEX[key]!.title.toLowerCase().includes(authQuery)) {
+          matchedAuthority = CONCEPT_INDEX[key]!.title;
+        }
+      });
+    }
+
+    if (!matchedAuthority) {
+      const extracted = mockExtractions.find(j => j.text.toLowerCase().includes(authQuery) || j.type.toLowerCase().includes(authQuery));
+      if (extracted && extracted.verified) {
+        matchedAuthority = extracted.text;
+      }
+    }
+
+    if (!matchedAuthority) {
+      setArgError("Authority could not be matched to CounselQ's research data.");
+      return;
+    }
+    
     setArgGenerating(true);
     window.setTimeout(() => {
       setArgGen({
         issue: argIssue,
-        rule: "Under Section 138 of the Negotiable Instruments Act, the presumption is in favour of the holder.",
-        authority: "Rangappa v. Sri Mohan (2010) 11 SCC 441",
-        application: "Applying the rule to the facts: " + argFacts.substring(0, 50) + "..., the accused has failed to rebut the statutory presumption.",
-        counterargument: "The accused may argue that the cheque was given only as security.",
-        response: "However, even a security cheque attracts Section 138 liability if the debt was legally enforceable on the date of presentation.",
-        conclusion: "Therefore, the elements of the offence are satisfied."
+        rule: `Based on ${matchedAuthority}, the general rule is established.`,
+        authority: matchedAuthority,
+        application: `Applying the rule to the facts: "${argFacts.substring(0, 150)}...", it is evident that the standard is met.`,
+        counterargument: `The opposing party may dispute the application of ${matchedAuthority} to these facts.`,
+        response: `However, a strict interpretation of ${matchedAuthority} as applied in recent jurisprudence defeats this exception.`,
+        conclusion: `Therefore, the present claim is maintainable and satisfies the legal threshold.`
       });
       setArgGenerating(false);
       toast.success("Argument draft generated");
@@ -209,7 +340,7 @@ function ResearchPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="relative">
-                <SearchBar query={query} setQuery={setQuery} onSearch={verifySearch} />
+                <SearchBar query={query} setQuery={setQuery} onSearch={classifyAndSearch} />
               </div>
               <div className="flex flex-wrap gap-2">
                 {["All Subjects", "Civil", "Criminal", "BNSS", "Constitutional"].map((cat) => (
@@ -227,39 +358,84 @@ function ResearchPage() {
 
               {loading && (
                 <div className="flex items-center gap-2 rounded-lg border border-dashed p-6 text-sm text-muted-foreground justify-center">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Searching case law, bare acts, and registries...
+                  <Loader2 className="h-4 w-4 animate-spin" /> Searching configured indices...
                 </div>
               )}
 
-              {result && !loading && (
+              {/* Strict No Result Fallback */}
+              {noResult && !loading && (
+                <div className="rounded-lg border border-dashed border-destructive/50 p-6 text-center">
+                  <ShieldAlert className="h-8 w-8 text-destructive/50 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-destructive">No CounselQ research result configured.</p>
+                  <p className="text-xs text-muted-foreground mt-1">We do not invent judgments or statutory text. Please check your query or consult the official portals.</p>
+                </div>
+              )}
+
+              {/* Citation Verification Result */}
+              {citationResult && !loading && (
                 <div className="mt-4 space-y-3">
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Search Results</h3>
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Citation Verification</h3>
                   <div className={`rounded-lg border p-4 ${
-                    result.verified ? "border-success/30 bg-success/10" : "border-destructive/30 bg-destructive/10"
+                    citationResult.verified ? "border-success/30 bg-success/10" : "border-destructive/30 bg-destructive/10"
                   }`}>
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <h4 className="font-serif font-bold text-lg">{result.name || result.query}</h4>
-                        <p className="text-sm font-mono text-muted-foreground">{result.citation || ""} · {result.court || ""}</p>
+                        <h4 className="font-serif font-bold text-lg">{citationResult.name || citationResult.query}</h4>
+                        <p className="text-sm font-mono text-muted-foreground">{citationResult.citation || ""} {citationResult.court ? `· ${citationResult.court}` : ""}</p>
                         <p className="flex items-center gap-2 text-sm font-semibold mt-2">
-                          {result.verified ? <CheckCircle2 className="h-4 w-4 text-success" /> : <ShieldAlert className="h-4 w-4 text-destructive" />}
-                          <span className={result.verified ? "text-success" : "text-destructive"}>
-                            {result.verified ? "VERIFIED" : "UNVERIFIED / REVIEW REQUIRED"}
+                          {citationResult.verified ? <CheckCircle2 className="h-4 w-4 text-success" /> : <ShieldAlert className="h-4 w-4 text-destructive" />}
+                          <span className={citationResult.verified ? "text-success" : "text-destructive"}>
+                            {citationResult.verified ? "VERIFIED CITATION" : "UNVERIFIED / REVIEW REQUIRED"}
                           </span>
                         </p>
-                        <p className="text-sm mt-2">{result.note}</p>
+                        <p className="text-sm mt-2">{citationResult.note}</p>
                       </div>
                       <div className="flex flex-col gap-2">
-                        {result.verified && (
-                          <Button size="sm" variant="default" onClick={() => saveSearchToDesk(result)}>
+                        {citationResult.verified && (
+                          <Button size="sm" variant="default" onClick={() => saveToDesk(citationResult, "Citation")}>
                             <Save className="h-4 w-4 mr-2" /> SAVE
                           </Button>
                         )}
-                        <Button size="sm" variant="outline">OPEN SOURCE</Button>
-                        <Button size="sm" variant="outline">ADD NOTE</Button>
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* Grouped Results */}
+              {groupedResults && !loading && (
+                <div className="mt-4 space-y-6">
+                  {Object.entries(groupedResults).map(([groupName, items]) => {
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={groupName} className="space-y-3">
+                        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">{groupName.replace(/([A-Z])/g, ' $1').trim()}</h3>
+                        <div className="grid gap-3">
+                          {items.map(item => (
+                            <div key={item.id} className="rounded-lg border p-4 hover:bg-muted/10 transition-colors">
+                              <div className="flex items-start justify-between">
+                                <div className="space-y-1">
+                                  <Badge variant="secondary" className="mb-1">{item.type}</Badge>
+                                  <h4 className="font-serif font-semibold">{item.title}</h4>
+                                  <p className="text-xs text-muted-foreground">{item.source}</p>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Button size="sm" variant="default" onClick={() => saveToDesk(item, item.type)}>
+                                    <Save className="h-4 w-4 mr-2" /> SAVE
+                                  </Button>
+                                  {item.officialUrl && (
+                                    <Button size="sm" variant="outline" asChild>
+                                      <a href={item.officialUrl} target="_blank" rel="noreferrer">OPEN OFFICIAL SOURCE</a>
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -275,14 +451,23 @@ function ResearchPage() {
               <CardDescription>Draft a structured argument based on your legal research.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 pt-4">
+              {argError && (
+                <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm font-medium flex items-center gap-2">
+                  <ShieldAlert className="h-4 w-4" /> {argError}
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
+                <div className="space-y-2 md:col-span-2">
                   <Label>Legal Issue</Label>
                   <Input placeholder="e.g., Maintainability of writ under Article 226..." value={argIssue} onChange={(e) => setArgIssue(e.target.value)} />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 md:col-span-2">
                   <Label>Relevant Facts</Label>
-                  <Input placeholder="Brief facts of the present case..." value={argFacts} onChange={(e) => setArgFacts(e.target.value)} />
+                  <Textarea placeholder="Brief facts of the present case..." value={argFacts} onChange={(e) => setArgFacts(e.target.value)} />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Selected Authorities / Provisions</Label>
+                  <Input placeholder="e.g., Article 226, (2018) 10 SCC 1" value={argAuth} onChange={(e) => setArgAuth(e.target.value)} />
                 </div>
               </div>
               <Button onClick={handleGenerateArgument} disabled={argGenerating} className="w-full">
@@ -351,7 +536,7 @@ function ResearchPage() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                   <CardTitle className="font-serif text-lg">AUTHORITY REVIEW</CardTitle>
-                  <CardDescription>Extracted 3 authorities from document.</CardDescription>
+                  <CardDescription>Extracted {mockExtractions.length} items from document.</CardDescription>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => setSelectedUploads(new Set())}>CLEAR ALL</Button>
@@ -359,22 +544,21 @@ function ResearchPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                {extractedJudgments.map((j) => {
-                  const isSelected = selectedUploads.has(j.cite);
+                {mockExtractions.map((j) => {
+                  const isSelected = selectedUploads.has(j.id);
                   return (
-                    <div key={j.cite} className={`flex flex-col sm:flex-row sm:items-center gap-4 rounded-lg border p-4 transition-colors ${isSelected ? 'bg-primary/5 border-primary/30' : ''}`}>
-                      <button onClick={() => toggleUploadSelection(j.cite)} className="flex-shrink-0 focus:outline-none">
+                    <div key={j.id} className={`flex flex-col sm:flex-row sm:items-center gap-4 rounded-lg border p-4 transition-colors ${isSelected ? 'bg-primary/5 border-primary/30' : ''}`}>
+                      <button onClick={() => toggleUploadSelection(j.id)} className="flex-shrink-0 focus:outline-none">
                         {isSelected ? <CheckSquare className="h-5 w-5 text-primary" /> : <Square className="h-5 w-5 text-muted-foreground" />}
                       </button>
                       <div className="min-w-0 flex-1">
-                        <p className="font-serif text-sm font-semibold">{j.name}</p>
-                        <p className="font-mono text-xs text-muted-foreground">{j.cite} · {j.court}</p>
+                        <Badge variant="secondary" className="mb-1 text-[10px] uppercase">{j.type}</Badge>
+                        <p className="font-serif text-sm font-semibold">{j.text}</p>
                       </div>
                       <Badge variant="outline" className={j.verified ? "border-success/30 bg-success/10 text-success" : "border-destructive/30 bg-destructive/10 text-destructive"}>
                         {j.verified ? "VERIFIED" : "REVIEW REQUIRED"}
                       </Badge>
                       <div className="flex gap-2">
-                        <Button size="sm" variant="ghost" className="h-8 px-2 text-xs">OPEN SOURCE</Button>
                         <Button size="sm" variant="ghost" className="h-8 px-2 text-xs">ADD NOTE</Button>
                       </div>
                     </div>
