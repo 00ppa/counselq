@@ -6,7 +6,7 @@ export function LandingPage() {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-8 p-6">
       <div className="text-center">
-        <h1 className="font-serif text-4xl font-bold">COUNSELQ</h1>
+        <img src="/logo.jpg" alt="CounselQ Logo" className="mx-auto h-32 object-contain" />
         <p className="mt-2 text-lg text-muted-foreground">Your courtroom command centre for Indian legal practice.</p>
         <p className="mt-1 text-sm text-muted-foreground">One workspace connecting court schedules, registry portals, legal research and case preparation.</p>
         <p className="mt-2 text-xs text-muted-foreground">DEMO ENVIRONMENT</p>

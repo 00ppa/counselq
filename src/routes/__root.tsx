@@ -126,7 +126,7 @@ function RootComponent() {
           <div className="flex min-w-0 flex-1 flex-col">
             <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur">
               <SidebarTrigger />
-              <span className="font-serif text-base font-semibold sm:hidden">CounselQ</span>
+              <img src="/logo.jpg" alt="CounselQ" className="h-7 object-contain sm:hidden" />
               {/* Watermark removed for cleaner UI */}
             </header>
             <main className="flex-1 p-3 sm:p-6">

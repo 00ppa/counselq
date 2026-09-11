@@ -30,13 +30,12 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="px-3 py-4">
         <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-sidebar-accent">
-            <Scale className="h-4 w-4 text-sidebar-primary" />
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md overflow-hidden">
+            <img src="/logo.jpg" alt="CounselQ" className="h-full w-full object-cover" />
           </span>
           {!collapsed && (
             <Link to="/" className="leading-tight hover:opacity-80 transition-opacity">
-              <p className="font-serif text-lg font-semibold tracking-tight">CounselQ</p>
-              <p className="text-[11px] text-sidebar-foreground/60">Your courtroom command centre.</p>
+              <img src="/logo.jpg" alt="CounselQ" className="h-8 object-contain" />
             </Link>
           )}
         </div>
