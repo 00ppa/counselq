@@ -321,7 +321,32 @@ function CauseListPage() {
           <RefreshCw className={refreshing ? "animate-spin" : ""} /> Refresh
         </Button>
         <Button size="sm" onClick={() => setReportOpen(true)}>
-          <Megaphone /> Report Court Status
+          <Megaphone className="mr-2 h-4 w-4" /> Report Court Status
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => {
+          const newItem = {
+            id: `custom-demo-${Date.now()}`,
+            serial: visible.length + 1,
+            caseNumber: `DEMO/${Math.floor(Math.random() * 1000)}/2026`,
+            title: `Custom Matter v. Demo Respondent [DEMO DATA]`,
+            petitioner: "Custom Matter",
+            respondent: "Demo Respondent",
+            advocates: { petitioner: "Adv. Demo", respondent: "Adv. Demo Res" },
+            section: "Demo Section",
+            stage: "Hearing",
+            category: "Civil" as const,
+            forumId,
+            location: safeLocation,
+            courtroom: safeCourtroom,
+            date: computedDate,
+            status: "Awaited" as const,
+            outOfOrder: false,
+            reports: 0,
+          };
+          setRows(prev => [...prev, newItem]);
+          toast.success("Demo matter added to current board");
+        }}>
+          + Add Demo Matter
         </Button>
         {activeForum && (
           <Button asChild size="sm" variant="ghost">
@@ -404,9 +429,26 @@ function CauseListPage() {
           );
         })}
         {visible.length === 0 && (
-          <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-            No matters on this board match your filters.
-          </p>
+          <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground space-y-4">
+            <h3 className="font-semibold text-base text-foreground uppercase tracking-wider">NO COUNSELQ DEMO DATA CONFIGURED</h3>
+            <p>CounselQ has no demo cause-list data configured for this courtroom. Use the official court source for the authoritative cause list.</p>
+            {activeForum && (
+               <div className="flex flex-wrap justify-center gap-3">
+                 {activeForum.links.causeList && (
+                    <Button asChild variant="outline">
+                      <a href={activeForum.links.causeList} target="_blank" rel="noreferrer">
+                        <ExternalLink className="mr-2 h-4 w-4" /> Open Official Cause List
+                      </a>
+                    </Button>
+                 )}
+                 <Button asChild variant="secondary">
+                   <a href={activeForum.links.officialUrl} target="_blank" rel="noreferrer">
+                     <ExternalLink className="mr-2 h-4 w-4" /> Open Official Court Portal
+                   </a>
+                 </Button>
+               </div>
+            )}
+          </div>
         )}
       </div>
 

@@ -23,7 +23,7 @@ export type CauselistItem = {
 // Helper to get today's date in YYYY-MM-DD
 export const todayISO = () => new Date().toISOString().slice(0, 10);
 
-export const causelist: CauselistItem[] = [
+const baseCauselist: CauselistItem[] = [
   {
     id: "1",
     serial: 1,
@@ -138,6 +138,97 @@ export const causelist: CauselistItem[] = [
     outOfOrder: true,
     reports: 0,
   },
+];
+
+const getTomorrow = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
+
+let demoIdCounter = 1000;
+
+const generateDemoCases = (forumId: string, location: string, courtroom: string, date: string, count: number = 3): CauselistItem[] => {
+  const cases: CauselistItem[] = [];
+  const fakeParties = [
+    ["Meridian Tech Pvt. Ltd.", "State Authority"],
+    ["Orion Infrastructure LLP", "Municipal Board"],
+    ["Apex Holdings", "Union of India"],
+    ["Zenith Corp", "Registrar of Companies"],
+    ["Nexus Builders", "Department of Revenue"]
+  ];
+  
+  for (let i = 0; i < count; i++) {
+    demoIdCounter++;
+    const [pet, res] = fakeParties[i % fakeParties.length]!;
+    cases.push({
+      id: `demo-${demoIdCounter}`,
+      serial: i + 1,
+      caseNumber: `DEMO/${demoIdCounter}/2026`,
+      title: `${pet} v. ${res} [DEMO DATA]`,
+      petitioner: pet,
+      respondent: res,
+      advocates: { petitioner: "Adv. Demo", respondent: "Adv. Demo Res" },
+      section: "Demo Section",
+      stage: "Hearing",
+      category: "Civil",
+      forumId,
+      location,
+      courtroom,
+      date,
+      status: "Awaited",
+      outOfOrder: false,
+      reports: 0,
+    });
+  }
+  return cases;
+};
+
+const generateConfigs = () => {
+  const configs = [
+    { f: "bombay-high-court", l: "Nagpur Bench", c: "Court 1" },
+    { f: "bombay-high-court", l: "Aurangabad Bench", c: "Court 1" },
+    { f: "madras-high-court", l: "Principal Seat at Chennai", c: "Court 1" },
+    { f: "madras-high-court", l: "Madurai Bench", c: "Court 1" },
+    { f: "kerala-high-court", l: "Principal Seat", c: "Court 1" },
+    { f: "delhi-high-court", l: "Principal Bench", c: "Court 1" },
+    { f: "karnataka-high-court", l: "Principal Bench at Bengaluru", c: "Court 1" },
+    { f: "allahabad-high-court", l: "Principal Seat", c: "Court 1" },
+    { f: "allahabad-high-court", l: "Lucknow Bench", c: "Court 1" },
+    { f: "rajasthan-high-court", l: "Jodhpur", c: "Court 1" },
+    { f: "rajasthan-high-court", l: "Jaipur Bench", c: "Court 1" },
+    { f: "sub-civil-district-judge-court", l: "District Court Complex", c: "Court 1" },
+    { f: "sub-crim-sessions-court", l: "Sessions Court Complex", c: "Court 1" },
+    { f: "tribunal-nclt", l: "Mumbai Bench", c: "Court 1" },
+    { f: "tribunal-nclat", l: "Principal Bench (Delhi)", c: "Court 1" },
+    { f: "tribunal-cat", l: "Principal Bench (Delhi)", c: "Court 1" }
+  ];
+  
+  let all: CauselistItem[] = [];
+  const today = todayISO();
+  const tomorrow = getTomorrow();
+  
+  configs.forEach(({ f, l, c }) => {
+    all = all.concat(generateDemoCases(f, l, c, today));
+  });
+
+  const tomorrowConfigs = [
+    { f: "bombay-high-court", l: "Principal Seat at Mumbai", c: "Court 12" },
+    { f: "madras-high-court", l: "Principal Seat at Chennai", c: "Court 1" },
+    { f: "kerala-high-court", l: "Principal Seat", c: "Court 1" },
+    { f: "delhi-high-court", l: "Principal Bench", c: "Court 1" },
+    { f: "tribunal-nclt", l: "Mumbai Bench", c: "Court 1" }
+  ];
+  tomorrowConfigs.forEach(({ f, l, c }) => {
+    all = all.concat(generateDemoCases(f, l, c, tomorrow, 2));
+  });
+  
+  return all;
+};
+
+export const causelist: CauselistItem[] = [
+  ...baseCauselist,
+  ...generateConfigs()
 ];
 
 export const citationDb: Record<string, { verified: boolean; note: string }> = {
