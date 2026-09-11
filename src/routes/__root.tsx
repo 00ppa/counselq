@@ -82,7 +82,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { name: "author", content: "CounselQ" },
       { property: "og:type", content: "website" },
+      { property: "og:image", content: "/logo.jpg" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:image", content: "/logo.jpg" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -126,7 +128,7 @@ function RootComponent() {
           <div className="flex min-w-0 flex-1 flex-col">
             <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur">
               <SidebarTrigger />
-              <img src="/logo.jpg" alt="CounselQ" className="h-7 object-contain sm:hidden" />
+              <span className="font-serif text-base font-semibold sm:hidden">CounselQ</span>
               {/* Watermark removed for cleaner UI */}
             </header>
             <main className="flex-1 p-3 sm:p-6">
