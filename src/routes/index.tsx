@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCaseDesk } from "@/lib/case-desk-store";
-import { LandingPage } from "./landing-page";
+import { LandingPage } from "./-landing-page";
 
 export const Route = createFileRoute("/")({
   head: () => ({
